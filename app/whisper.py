@@ -65,7 +65,6 @@ class CachedMultiHeadAttentionDecoderSelf(nn.Module):
         self,
         x: Tensor,
         kv_cache: Tensor,
-        offset: Tensor,
     ):
         # q will always come from the bottom (from previous decoder)
         q = self.query(x)
@@ -75,7 +74,6 @@ class CachedMultiHeadAttentionDecoderSelf(nn.Module):
         
         key = self.key(x)
         value = self.value(x)
-
         key_cache = torch.cat([kv_cache[:, self.n_layer, 0, ...], key], dim=1)
         value_cache = torch.cat([kv_cache[:, self.n_layer, 1, ...], value], dim=1)
 
@@ -95,13 +93,6 @@ class CachedMultiHeadAttentionDecoderSelf(nn.Module):
         v = v.view(v.size(0), v.size(1), self.n_head, -1).permute(0, 2, 1, 3)
         
         qk = q @ k
-
-        # Mask padded tokens, they deserve 0 attention score
-        padding_mask = (qk == 0)
-        qk.masked_fill_(padding_mask, float('-inf')) # -- more advanced, ONNX warnings
-        
-        # mask = padding_mask * -65504 # Smallest value for float16
-        # qk = qk + mask
         
         # the model expects one token at a time
         # if mask is not None:
@@ -110,7 +101,6 @@ class CachedMultiHeadAttentionDecoderSelf(nn.Module):
         
         w = F.softmax(qk, dim=-1)
         return (w @ v).permute(0, 2, 1, 3).flatten(start_dim=2)
-
 
 
 
@@ -202,11 +192,10 @@ class CachedResidualAttentionBlock(nn.Module):
         x: Tensor,
         kv_cache: Tensor,
         n_layer_cross_k,
-        n_layer_cross_v,
-        offset: Tensor,
+        n_layer_cross_v
     ):
         # decoder attn and cross-attn block with skip connection
-        x1, k, v = self.attn(self.attn_ln(x), kv_cache, offset)
+        x1, k, v = self.attn(self.attn_ln(x), kv_cache)
         x = x + x1
         x = x + self.cross_attn(self.cross_attn_ln(x), n_layer_cross_k, n_layer_cross_v)
         x = x + self.mlp(self.mlp_ln(x))
@@ -216,12 +205,13 @@ class CachedResidualAttentionBlock(nn.Module):
 
 class AudioEncoder(nn.Module):
     def __init__(
-        self, n_mels: int, n_ctx: int, n_state: int, n_head: int, n_layers: int
+        self, n_mels: int, n_ctx: int, n_state: int, n_head: int, n_layers: int, encoder_x: bool = False
     ):
         super().__init__()
         self.conv1 = nn.Conv1d(n_mels, n_state, kernel_size=3, padding=1)
         self.conv2 = nn.Conv1d(n_state, n_state, kernel_size=3, stride=2, padding=1)
         self.register_buffer("positional_embedding", sinusoids(n_ctx, n_state))
+        self.encoder_x = encoder_x
 
         # encoder
         self.blocks = nn.ModuleList(
@@ -254,7 +244,10 @@ class AudioEncoder(nn.Module):
         for block in self.blocks:
             x = block(x)
         x = self.ln_post(x)
-
+        
+        if self.encoder_x:
+            return x
+        
         ###   DECODER   ###
         n_layer_cross_k_list = []
         n_layer_cross_v_list = []
@@ -263,8 +256,8 @@ class AudioEncoder(nn.Module):
             n_layer_cross_v_list.append(block.cross_attn.value(x))
         audio_features = torch.stack(n_layer_cross_k_list), torch.stack(n_layer_cross_v_list)
         return (audio_features[0].permute(1, 0, 2, 3), audio_features[1].permute(1, 0, 2, 3))
-   
-     
+
+
 
 class TextDecoder(nn.Module):
     def __init__(
@@ -311,11 +304,11 @@ class TextDecoder(nn.Module):
         keys = []
         values = []
         for block in self.blocks:
-            x, k, v = block(x, kv_cache, n_layer_cross_k, n_layer_cross_v, offset)
+            x, k, v = block(x, kv_cache, n_layer_cross_k, n_layer_cross_v)
             keys.append(k)
             values.append(v)
         
         x = self.ln(x)
         logits = x @ torch.transpose(self.token_embedding.weight, 0, 1)
         keys, values = torch.stack((keys), dim=0), torch.stack((values), dim=0)
-        return logits, kv_cache, keys.permute(1, 0, 2, 3), values.permute(1, 0, 2, 3)
+        return logits, keys.permute(1, 0, 2, 3), values.permute(1, 0, 2, 3)
