@@ -213,3 +213,55 @@ class CachedResidualAttentionBlock(nn.Module):
         x = x + self.cross_attn(self.cross_attn_ln(x), n_layer_cross_k, n_layer_cross_v)
         x = x + self.mlp(self.mlp_ln(x))
         return x, k, v
+    
+
+
+class AudioEncoder(nn.Module):
+    def __init__(
+        self, n_mels: int, n_ctx: int, n_state: int, n_head: int, n_layers: int
+    ):
+        super().__init__()
+        self.conv1 = nn.Conv1d(n_mels, n_state, kernel_size=3, padding=1)
+        self.conv2 = nn.Conv1d(n_state, n_state, kernel_size=3, stride=2, padding=1)
+        self.register_buffer("positional_embedding", sinusoids(n_ctx, n_state))
+
+        # encoder
+        self.blocks = nn.ModuleList(
+            [ResidualAttentionBlock(n_state, n_head) for _ in range(n_layers)]
+        )
+        self.ln_post = nn.LayerNorm(n_state)
+        
+        # decoder
+        self.decoder = nn.ModuleList(
+            [
+                CachedResidualAttentionBlock(n_state, n_head, n_layer)
+                for n_layer in range(n_layers)
+            ]
+        )
+
+    def forward(self, x: Tensor):
+        """
+        x : torch.Tensor, shape = (batch_size, n_mels, n_ctx)
+            the mel spectrogram of the audio
+        """
+        x = F.gelu(self.conv1(x))
+        x = F.gelu(self.conv2(x))
+        x = x.permute(0, 2, 1)
+
+        # assert x[0].size() == self.positional_embedding.size(), "incorrect audio shape"
+        # x = x + self.positional_embedding
+        
+        x = (x + self.positional_embedding[: x.shape[1]]).to(x.dtype)
+
+        for block in self.blocks:
+            x = block(x)
+        x = self.ln_post(x)
+
+        ###   DECODER   ###
+        n_layer_cross_k_list = []
+        n_layer_cross_v_list = []
+        for block in self.decoder:
+            n_layer_cross_k_list.append(block.cross_attn.key(x))
+            n_layer_cross_v_list.append(block.cross_attn.value(x))
+        audio_features = torch.stack(n_layer_cross_k_list), torch.stack(n_layer_cross_v_list)
+        return (audio_features[0].permute(1, 0, 2, 3), audio_features[1].permute(1, 0, 2, 3))
