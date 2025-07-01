@@ -44,3 +44,18 @@ def get_whisper_encoder_keys(
         encoder_needed_keys.append(key)
     return encoder_needed_keys
 
+
+def get_whisper_encoder_weigths(
+    encoder_keys: KeysView[str],
+    encoder_needed_keys: list[str],
+    medium_weights: dict[dict[str: torch.tensor]]
+) -> dict[str: torch.tensor]: 
+    """
+    Returns the extracted weights from original .pt file 
+    and adjustes the keys to match with encoder block
+    """
+    encoder_weights = {}
+    for whisper_key, encoder_key in zip(encoder_needed_keys, encoder_keys):
+        encoder_weights[encoder_key] = medium_weights['model_state_dict'][whisper_key]
+    return encoder_weights
+
