@@ -1,6 +1,5 @@
 import os
 import torch
-import configs
 import torchaudio
 import numpy as np
 import soundfile as sf
@@ -8,6 +7,7 @@ import soundfile as sf
 from typing import Tuple
 from typing import KeysView
 from functools import lru_cache
+from app import configs
 
 
 def sinusoids(length, channels, max_timescale=10000):
