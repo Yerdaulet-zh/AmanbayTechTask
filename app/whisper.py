@@ -1,6 +1,6 @@
 from torch import nn
 from torch import Tensor
-from utils import sinusoids
+from .utils import sinusoids
 from dataclasses import dataclass
 
 import torch.nn.functional as F
