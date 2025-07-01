@@ -2,10 +2,8 @@ from torch import nn
 from torch import Tensor
 from utils import sinusoids
 from dataclasses import dataclass
-from typing import Optional, Generator
 
 import torch.nn.functional as F
-import numpy as np
 import torch
 
 
