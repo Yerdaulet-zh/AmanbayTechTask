@@ -181,3 +181,35 @@ class ResidualAttentionBlock(nn.Module):
         x = x + self.attn(self.attn_ln(x))
         x = x + self.mlp(self.mlp_ln(x))
         return x
+    
+
+
+class CachedResidualAttentionBlock(nn.Module):
+    def __init__(self, n_state: int, n_head: int, n_layer: int):
+        super().__init__()
+        self.attn = CachedMultiHeadAttentionDecoderSelf(n_state, n_head, n_layer)
+        self.attn_ln = nn.LayerNorm(n_state)
+        self.cross_attn = CachedMultiHeadAttentionDecoderCross(n_state, n_head, n_layer)
+        self.cross_attn_ln = nn.LayerNorm(n_state)
+        n_mlp = n_state * 4
+        self.mlp = nn.Sequential(
+            nn.Linear(n_state, n_mlp),
+            nn.GELU(),
+            nn.Linear(n_mlp, n_state),
+        )
+        self.mlp_ln = nn.LayerNorm(n_state)
+
+    def forward(
+        self,
+        x: Tensor,
+        kv_cache: Tensor,
+        n_layer_cross_k,
+        n_layer_cross_v,
+        offset: Tensor,
+    ):
+        # decoder attn and cross-attn block with skip connection
+        x1, k, v = self.attn(self.attn_ln(x), kv_cache, offset)
+        x = x + x1
+        x = x + self.cross_attn(self.cross_attn_ln(x), n_layer_cross_k, n_layer_cross_v)
+        x = x + self.mlp(self.mlp_ln(x))
+        return x, k, v
