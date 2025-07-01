@@ -1,9 +1,11 @@
 import os
 import torch
+import configs
 import torchaudio
 import numpy as np
 import soundfile as sf
 
+from typing import Tuple
 from typing import KeysView
 from functools import lru_cache
 
@@ -20,7 +22,7 @@ def sinusoids(length, channels, max_timescale=10000):
 def load_original_whisper_weights(
     file_path: str,
     device: str,
-) -> dict[dict[str: torch.tensor]]:
+) -> dict[dict[str: torch.Tensor]]:
     """
     Load whisper weights to the system
     """
@@ -62,8 +64,8 @@ def get_whisper_encoder_keys(
 def get_whisper_encoder_weigths(
     encoder_keys: KeysView[str],
     encoder_needed_keys: list[str],
-    medium_weights: dict[dict[str: torch.tensor]]
-) -> dict[str: torch.tensor]: 
+    medium_weights: dict[dict[str: torch.Tensor]]
+) -> dict[str: torch.Tensor]: 
     """
     Returns the extracted weights from original .pt file 
     and adjustes the keys to match with encoder block
@@ -95,8 +97,8 @@ def get_whisper_decoder_keys(
 def get_whisper_decoder_weigths(
     decoder_keys: KeysView[str],
     decoder_needed_keys: list[str],
-    medium_weights: dict[dict[str: torch.tensor]]
-) -> dict[str: torch.tensor]: 
+    medium_weights: dict[dict[str: torch.Tensor]]
+) -> dict[str: torch.Tensor]: 
     """
     Returns the extracted weights from original .pt file 
     and adjustes the keys to match with encoder block
@@ -178,7 +180,20 @@ def compute_features(
 
 def get_audio_mel(
     audio_path: str
-) -> torch.tensor:
+) -> torch.Tensor:
     wave, sr = sf.read('english_sample.wav')
     mel = compute_features(wave, sample_rate=sr)
     return mel
+
+
+def update_kv_cache(
+    kv_cache: torch.Tensor, 
+    keys: torch.Tensor, 
+    values: torch.Tensor, 
+    offset: int
+) -> Tuple[torch.Tensor, int]:
+    kv_cache[..., 0, offset, :] = keys.squeeze(2)
+    kv_cache[..., 1, offset, :] = values.squeeze(2)
+    offset += 1
+    return kv_cache, offset
+
