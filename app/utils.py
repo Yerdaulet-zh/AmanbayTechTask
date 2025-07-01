@@ -59,3 +59,21 @@ def get_whisper_encoder_weigths(
         encoder_weights[encoder_key] = medium_weights['model_state_dict'][whisper_key]
     return encoder_weights
 
+
+def get_whisper_decoder_keys(
+    decoder_keys: KeysView[str]
+) -> list[str]:
+    """
+    Returns: list[str] 
+    Whisper state dict keys which will be used to extract 
+    from model.pt only required weights for decoder block 
+    (the keys are adjusted for only original whisper layer names).
+    """
+    
+    decoder_needed_keys = []
+    
+    for key in decoder_keys:
+        key = 'decoder.' + key
+        decoder_needed_keys.append(key)
+    return decoder_needed_keys
+
