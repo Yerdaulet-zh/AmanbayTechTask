@@ -265,3 +265,59 @@ class AudioEncoder(nn.Module):
             n_layer_cross_v_list.append(block.cross_attn.value(x))
         audio_features = torch.stack(n_layer_cross_k_list), torch.stack(n_layer_cross_v_list)
         return (audio_features[0].permute(1, 0, 2, 3), audio_features[1].permute(1, 0, 2, 3))
+   
+     
+
+class TextDecoder(nn.Module):
+    def __init__(
+        self,
+        n_vocab: int,
+        n_ctx: int,
+        n_state: int,
+        n_head: int,
+        n_layers: int,
+    ):
+        super().__init__()
+
+        self.token_embedding = nn.Embedding(n_vocab, n_state)
+        self.positional_embedding = nn.Parameter(torch.empty(n_ctx, n_state))
+
+        self.blocks = nn.ModuleList(
+            [
+                CachedResidualAttentionBlock(n_state, n_head, n_layer)
+                for n_layer in range(n_layers)
+            ]
+        )
+        self.ln = nn.LayerNorm(n_state)
+
+        # mask = torch.empty(n_ctx, n_ctx).fill_(-np.inf).triu_(1)
+        # self.register_buffer("mask", mask, persistent=False)
+
+    def forward(self, x: Tensor, kv_cache: Tensor, n_layer_cross_k: Tensor, n_layer_cross_v: Tensor, offset: Tensor):
+        """
+        x : torch.LongTensor, shape = (batch_size, <= n_ctx)
+            the text tokens
+        """
+
+        # (b_size, n_layers, audio_lenght, d_model)
+        n_layer_cross_k = n_layer_cross_k.permute(1, 0, 2, 3)
+        n_layer_cross_v = n_layer_cross_v.permute(1, 0, 2, 3)
+        
+        # offset = kv_cache[0].size(1) if len(kv_cache) > 0 else 0
+        
+        x = (
+            self.token_embedding(x)
+            + self.positional_embedding[offset] # We always expect a single token at a time in the batch 
+        )
+
+        keys = []
+        values = []
+        for block in self.blocks:
+            x, k, v = block(x, kv_cache, n_layer_cross_k, n_layer_cross_v, offset)
+            keys.append(k)
+            values.append(v)
+        
+        x = self.ln(x)
+        logits = x @ torch.transpose(self.token_embedding.weight, 0, 1)
+        keys, values = torch.stack((keys), dim=0), torch.stack((values), dim=0)
+        return logits, kv_cache, keys.permute(1, 0, 2, 3), values.permute(1, 0, 2, 3)
