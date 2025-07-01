@@ -1,7 +1,10 @@
+import os
 import torch
+import torchaudio
 import numpy as np
 
 from typing import KeysView
+from functools import lru_cache
 
 
 def sinusoids(length, channels, max_timescale=10000):
@@ -101,4 +104,73 @@ def get_whisper_decoder_weigths(
     for whisper_key, decoder_key in zip(decoder_needed_keys, decoder_keys):
         decoder_weights[decoder_key] = medium_weights['model_state_dict'][whisper_key]
     return decoder_weights
+
+
+@lru_cache(maxsize=None)
+def mel_filters(device, n_mels: int) -> torch.Tensor:
+    """
+    load the mel filterbank matrix for projecting STFT into a Mel spectrogram.
+    Allows decoupling librosa dependency; saved using:
+
+        np.savez_compressed(
+            "mel_filters.npz",
+            mel_80=librosa.filters.mel(sr=16000, n_fft=400, n_mels=80),
+            mel_128=librosa.filters.mel(sr=16000, n_fft=400, n_mels=128),
+        )
+    """
+    # assert n_mels in {80, 128}, f"Unsupported n_mels: {n_mels}"
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    filters_path = os.path.join(base_dir, "assets", "mel_filters.npz")
+    with np.load(filters_path, allow_pickle=False) as f:
+        return torch.from_numpy(f[f"mel_{n_mels}"]).to(device)
+
+
+def compute_features(
+        wave: np.array, 
+        sample_rate: int
+    ) -> torch.Tensor | dict:
+    """
+    Args:
+        encoded_audio: Base64 encoded string of the audio file.
+        sample_rate: Sample rate of the audio.
+    Returns:
+        Return a 1-D float32 tensor of shape (1, 80, 500) containing the features.
+    """
+    try:
+        # wave = audio_base64Decoder(encoded_audio)
+        audio = torch.from_numpy(wave).contiguous().cuda()
+        
+        if sample_rate != 16000:
+            audio = torchaudio.functional.resample(
+                audio, orig_freq=sample_rate, new_freq=16000
+            ).float()
+        else:
+            audio = audio.float()
+
+        window = torch.hann_window(400).to(audio.device)
+        stft = torch.stft(audio.float(), 400, 160, window=window, return_complex=True)
+        magnitudes = stft[..., :-1].abs() ** 2
+
+        filters = mel_filters('cuda', 80)
+        mel_spec = filters @ magnitudes
+        
+        log_spec = torch.clamp(mel_spec, min=1e-10).log10()
+        log_spec = torch.maximum(log_spec, log_spec.max() - 8.0)
+        mel = (log_spec + 4.0) / 4.0
+        mel = mel.permute(1, 0)
+
+        target = 3000
+        if mel.size(0) > target:
+            mel = mel[: target]
+            # mel = torch.nn.functional.pad(mel, (0, 0, 0, 50), "constant", 0)
+        else:
+            mel = torch.nn.functional.pad(mel, (0, 0, 0, target - mel.size(0)), "constant", 0)
+        mel = mel.t()
+        # mel = mel.unsqueeze(dim=0)
+        return mel.to(torch.float16)
+    except Exception as e:
+        return {
+            # "status_code": 520, 
+            "detail": str(e)
+        }
 
