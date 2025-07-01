@@ -197,3 +197,11 @@ def update_kv_cache(
     offset += 1
     return kv_cache, offset
 
+
+def get_token(
+    logits: torch.Tensor
+) -> torch.Tensor:
+    last = logits[:, -1]
+    last[:, configs.suppress_nonspeech] = -torch.inf
+    last = last.argmax(-1, keepdim=True)
+    return last
