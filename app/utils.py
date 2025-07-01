@@ -2,6 +2,7 @@ import os
 import torch
 import torchaudio
 import numpy as np
+import soundfile as sf
 
 from typing import KeysView
 from functools import lru_cache
@@ -174,3 +175,10 @@ def compute_features(
             "detail": str(e)
         }
 
+
+def get_audio_mel(
+    audio_path: str
+) -> torch.tensor:
+    wave, sr = sf.read('english_sample.wav')
+    mel = compute_features(wave, sample_rate=sr)
+    return mel
