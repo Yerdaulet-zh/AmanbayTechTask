@@ -303,3 +303,74 @@ def load_model(
 
     print("Model Encoder and Decoder blocks are loaded successfully.\nNow the model is ready for inference.")
     return encoder, decoder
+
+
+def run_inference(
+    encoder: nn.Module,
+    decoder: nn.Module, 
+    mel: torch.Tensor,
+    tokenizer: WhisperTokenizerFast,
+    device: str,
+    output_csv_file_path: str,
+    max_token_sequence: int
+) -> None:
+    
+    assert 1 <= max_token_sequence <= 100, "max_token_sequence must be between 1 and 100"
+
+    print("Running inference...")
+    
+    offset = 0
+    b_size = mel.size(0)
+    max_token_sequence = max_token_sequence
+    tokens = torch.tensor([[50258, 50259, 50359, 50363]] * b_size, dtype=torch.int32).to(device)
+    kv_cache = torch.zeros((b_size, 24, 2, max_token_sequence, 1024), dtype=torch.half, device=device)
+
+    
+    with torch.no_grad():
+        n_layer_cross_k, n_layer_cross_v = encoder(mel)
+        
+        # Special tokens
+        for token in tokens[0]:
+            logits, keys, values = decoder(
+                token.unsqueeze(0).unsqueeze(0),
+                kv_cache,
+                n_layer_cross_k,
+                n_layer_cross_v,
+                offset
+            )
+            kv_cache, offset = update_kv_cache(kv_cache, keys, values, offset)
+            last = get_token(logits)
+        tokens = torch.cat([tokens, last], dim=-1)
+        
+        
+        # Start of auto-regressiveness
+        for iteration in range(max_token_sequence-len(tokens)):
+            logits, keys, values = decoder(
+                last,
+                kv_cache,
+                n_layer_cross_k, 
+                n_layer_cross_v, 
+                offset
+            )
+            kv_cache, offset = update_kv_cache(kv_cache, keys, values, offset)
+            last = get_token(logits)
+            tokens = torch.cat([tokens, last], dim=-1)
+            
+            # when to stop
+            if last.item() == 50257:
+                break
+        
+        decoded_text = tokenizer.decode(tokens[0])
+    print("Inference completed successfully.")
+    print("Decoded text:", decoded_text)
+    print(f"The number of iterations by decoder: {iteration}")
+
+    output_file_count = len(os.listdir(output_csv_file_path))
+    
+    # Convert to DataFrame
+    pd.DataFrame({
+        "transcription": [decoded_text]
+    }).to_csv(
+        f"{output_csv_file_path}_infra_output_{output_file_count}_{datetime.datetime}.csv",
+        index=False
+    )
