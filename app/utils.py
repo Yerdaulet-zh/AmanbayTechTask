@@ -8,6 +8,7 @@ import soundfile as sf
 from typing import Tuple
 from typing import KeysView
 from functools import lru_cache
+from transformers import WhisperTokenizerFast
 
 
 def sinusoids(length, channels, max_timescale=10000):
@@ -202,3 +203,9 @@ def get_token(
     last[:, configs.suppress_nonspeech] = -torch.inf
     last = last.argmax(-1, keepdim=True)
     return last
+
+
+def load_tokenizer() -> WhisperTokenizerFast:
+    print("Loading Whisper Medium v3 tokenizer...")
+    tokenizer = WhisperTokenizerFast.from_pretrained("openai/whisper-medium")
+    return tokenizer
