@@ -1,5 +1,6 @@
 import os
 import torch
+import configs
 import torchaudio
 import numpy as np
 import soundfile as sf
@@ -7,7 +8,6 @@ import soundfile as sf
 from typing import Tuple
 from typing import KeysView
 from functools import lru_cache
-from app import configs
 
 
 def sinusoids(length, channels, max_timescale=10000):
@@ -130,7 +130,8 @@ def mel_filters(device, n_mels: int) -> torch.Tensor:
 
 def compute_features(
         wave: np.array, 
-        sample_rate: int
+        sample_rate: int,
+        device: str
     ) -> torch.Tensor | dict:
     """
     Args:
@@ -140,8 +141,7 @@ def compute_features(
         Return a 1-D float32 tensor of shape (1, 80, 500) containing the features.
     """
     try:
-        # wave = audio_base64Decoder(encoded_audio)
-        audio = torch.from_numpy(wave).contiguous().cuda()
+        audio = torch.from_numpy(wave).contiguous().to(device)
         
         if sample_rate != 16000:
             audio = torchaudio.functional.resample(
@@ -150,11 +150,11 @@ def compute_features(
         else:
             audio = audio.float()
 
-        window = torch.hann_window(400).to(audio.device)
+        window = torch.hann_window(400).to(device)
         stft = torch.stft(audio.float(), 400, 160, window=window, return_complex=True)
         magnitudes = stft[..., :-1].abs() ** 2
 
-        filters = mel_filters('cuda', 80)
+        filters = mel_filters(device, 80)
         mel_spec = filters @ magnitudes
         
         log_spec = torch.clamp(mel_spec, min=1e-10).log10()
@@ -169,13 +169,10 @@ def compute_features(
         else:
             mel = torch.nn.functional.pad(mel, (0, 0, 0, target - mel.size(0)), "constant", 0)
         mel = mel.t()
-        # mel = mel.unsqueeze(dim=0)
+        mel = mel.unsqueeze(dim=0)
         return mel.to(torch.float16)
     except Exception as e:
-        return {
-            # "status_code": 520, 
-            "detail": str(e)
-        }
+        raise Exception("Error in computing features: " + str(e))
 
 
 def get_audio_mel(
