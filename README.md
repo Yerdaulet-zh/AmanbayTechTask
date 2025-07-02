@@ -5,16 +5,25 @@ Testual task from AmanbayTech company aimed to validate the skills and depth of 
 
 This project provides a simple CLI to transcribe speech from an audio file using a modified and optimized Whisper v3 model.
 
-## 📁 Project Structure
+## App Folder Structure
 
 .
-├── app/
-│ ├── main.py # Entry point for inference
-│ ├── utils.py # Audio preprocessing utilities
-│ ├── main_utils.py # Model loading and inference logic
-│ ├── configs.py # Configuration (model path, device, etc.)
-├── model/ # Folder where model will be downloaded (automatically created)
-├── output/ # Folder where inference output will be saved (automatically created)
+├── assets
+│   └── mel_filters.npz
+├── configs.py
+├── main.py
+├── main_utils.py
+├── model
+│   └── medium.pt
+├── output
+│   └── _infra_output_2_2025-07-02 11:21:41.097204.csv
+├── __pycache__
+│   ├── configs.cpython-312.pyc
+│   ├── main_utils.cpython-312.pyc
+│   ├── utils.cpython-312.pyc
+│   └── whisper.cpython-312.pyc
+├── utils.py
+└── whisper.py
 
 
 ## ⚙️ Requirements
