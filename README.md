@@ -40,18 +40,18 @@ Install the required dependencies:
 
 ```bash
 pip install -r requirements.txt
-
+```
     Note: Make sure ffmpeg is installed for audio processing if not already available.
 
 
 ▶️ How to Run
 
 Run the inference script from the root of your project:
-
+```bash
 python3 app/main.py \
   --audio_file_path path/to/your_audio.wav \
   --max_token_sequence 50
-
+```
 Arguments
 
     --audio_file_path: (Required) Path to the input audio file (e.g., .wav, .flac).
@@ -60,11 +60,11 @@ Arguments
     Acceptable range is 1 to 100.
 
 Example
-
+```bash
 python3 app/main.py \
   --audio_file_path audio_samples/english_sample.wav \
   --max_token_sequence 75
-
+```
 📤 Output
 
 The transcribed text is saved as a .csv file in the output/ directory.
