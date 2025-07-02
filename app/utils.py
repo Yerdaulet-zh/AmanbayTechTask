@@ -2,14 +2,23 @@ import os
 import torch
 import configs
 import requests
+import datetime
 import torchaudio
 import numpy as np
+import pandas as pd
+import torch.nn as nn
 import soundfile as sf
 
 from typing import Tuple
 from typing import KeysView
 from functools import lru_cache
 from transformers import WhisperTokenizerFast
+
+from whisper import (
+    AudioEncoder, 
+    TextDecoder,
+    ModelDimensions
+)
 
 
 def sinusoids(length, channels, max_timescale=10000):
@@ -238,3 +247,59 @@ def ensure_model(
                     f.write(chunk)
 
         print("Download completed.")
+
+
+def load_model(
+    model_path: str, 
+    device: str
+) -> tuple[nn.Module, nn.Module]:
+    print("Loading Whisper Medium v3 in float16...")
+
+    medium_weights = load_original_whisper_weights(
+        file_path=model_path, 
+        device=device
+    )
+    dims = ModelDimensions(**medium_weights['dims'])
+
+    encoder = AudioEncoder(
+        n_mels=dims.n_mels,
+        n_ctx=dims.n_audio_ctx,
+        n_state=dims.n_audio_state,
+        n_head=dims.n_audio_head,
+        n_layers=dims.n_audio_layer,
+    )
+
+    decoder = TextDecoder(
+        n_vocab=dims.n_vocab,
+        n_ctx=dims.n_text_ctx,
+        n_state=dims.n_text_state,
+        n_head=dims.n_text_head,
+        n_layers=dims.n_text_layer 
+    )
+
+    encoder_keys = encoder.state_dict()
+
+    encoder_needed_keys = get_whisper_encoder_keys(encoder_keys)
+    encoder_weights = get_whisper_encoder_weigths(
+        encoder_keys,
+        encoder_needed_keys, 
+        medium_weights
+    )
+    encoder.load_state_dict(encoder_weights)
+    encoder = encoder.to(device).half()
+    encoder = encoder.eval()
+
+    decoder_keys = decoder.state_dict()
+
+    decoder_needed_keys = get_whisper_decoder_keys(decoder_keys)
+    decoder_weights = get_whisper_decoder_weigths(
+        decoder_keys, 
+        decoder_needed_keys, 
+        medium_weights
+    )
+    decoder.load_state_dict(decoder_weights)
+    decoder = decoder.to(device).half()
+    decoder = decoder.eval()
+
+    print("Model Encoder and Decoder blocks are loaded successfully.\nNow the model is ready for inference.")
+    return encoder, decoder
