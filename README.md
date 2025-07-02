@@ -1,7 +1,7 @@
 # AmanbayTechTask
 Testual task from AmanbayTech company aimed to validate the skills and depth of understanding
 
-App foder contains of
+Overall project directory:
 <pre>
 .
 ├── app
