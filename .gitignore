@@ -2,6 +2,7 @@
 app/model/
 notebooks/fleurs/
 notebooks/audio_embeddings/
+notebooks/Untitled*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
