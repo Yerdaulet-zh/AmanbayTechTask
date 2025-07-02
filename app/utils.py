@@ -1,6 +1,7 @@
 import os
 import torch
 import configs
+import requests
 import torchaudio
 import numpy as np
 import soundfile as sf
@@ -219,3 +220,21 @@ def ensure_directory(
         os.makedirs(directory)
         print("Directory created successfully.")
 
+
+def ensure_model(
+    model_path: str, 
+    medium_model_url: str
+)-> None:
+    if not os.path.isfile(model_path):
+        print(f"The expected file '{model_path}' does not exist.\nDownloading it now...")
+        response = requests.get(url=medium_model_url, stream=True)
+        
+        if response.status_code != 200:
+            raise Exception(f"Failed to download the model file: {response.status_code}")
+        
+        with open(model_path, "wb") as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                if chunk:
+                    f.write(chunk)
+
+        print("Download completed.")
