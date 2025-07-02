@@ -209,3 +209,13 @@ def load_tokenizer() -> WhisperTokenizerFast:
     print("Loading Whisper Medium v3 tokenizer...")
     tokenizer = WhisperTokenizerFast.from_pretrained("openai/whisper-medium")
     return tokenizer
+
+
+def ensure_directory(
+    directory: str='model/'
+) -> None:
+    if not os.path.isdir(directory):
+        print(f"The expected directory '{directory}' does not exist.\nCreating it now...")
+        os.makedirs(directory)
+        print("Directory created successfully.")
+
